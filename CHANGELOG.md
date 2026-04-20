@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-04-20
+
+### ✨ Features
+
+- feat: add Nix syntax highlighting support ([025aeb6](https://github.com/unhappychoice/gitlogue/commit/025aeb6))
+- feat(syntax): support tree-sitter language injections (#192) ([e76953e](https://github.com/unhappychoice/gitlogue/commit/e76953e))
+- feat: add Astro syntax highlighting support (#190) ([f309314](https://github.com/unhappychoice/gitlogue/commit/f309314))
+
+### 🐛 Bug Fixes
+
+- fix(animation): collapse nested if into match arm guard ([431c029](https://github.com/unhappychoice/gitlogue/commit/431c029))
+- fix(syntax): update dart language loading for tree-sitter-dart 0.1.0 ([5b7f03b](https://github.com/unhappychoice/gitlogue/commit/5b7f03b))
+
+### 📝 Other Changes
+
+- chore: bump version to v0.9.0 ([2670b69](https://github.com/unhappychoice/gitlogue/commit/2670b69))
+- chore(deps): bump tree-sitter-c-sharp from 0.23.1 to 0.23.5 ([31c5efb](https://github.com/unhappychoice/gitlogue/commit/31c5efb))
+- chore(deps): bump rand from 0.10.0 to 0.10.1 ([58f6d85](https://github.com/unhappychoice/gitlogue/commit/58f6d85))
+- chore(deps): bump toml_edit ([de7786f](https://github.com/unhappychoice/gitlogue/commit/de7786f))
+- chore(deps): bump toml_edit from 0.25.9+spec-1.1.0 to 0.25.10+spec-1.1.0 ([c7a4a91](https://github.com/unhappychoice/gitlogue/commit/c7a4a91))
+- chore(deps): bump toml_edit from 0.25.6+spec-1.1.0 to 0.25.9+spec-1.1.0 ([ac2e65c](https://github.com/unhappychoice/gitlogue/commit/ac2e65c))
+- chore(deps): bump toml from 1.1.1+spec-1.1.0 to 1.1.2+spec-1.1.0 ([ec38319](https://github.com/unhappychoice/gitlogue/commit/ec38319))
+- chore(deps): bump toml from 1.1.0+spec-1.1.0 to 1.1.1+spec-1.1.0 ([b2a3b3e](https://github.com/unhappychoice/gitlogue/commit/b2a3b3e))
+- chore(deps): bump tree-sitter-rust from 0.24.1 to 0.24.2 ([0598f62](https://github.com/unhappychoice/gitlogue/commit/0598f62))
+- docs: add author section with website link ([6a2af0c](https://github.com/unhappychoice/gitlogue/commit/6a2af0c))
+- chore(deps): bump toml_edit from 0.25.5+spec-1.1.0 to 0.25.6+spec-1.1.0 ([659d1ce](https://github.com/unhappychoice/gitlogue/commit/659d1ce))
+- chore(deps): bump toml from 1.0.7+spec-1.1.0 to 1.1.0+spec-1.1.0 ([7063ca2](https://github.com/unhappychoice/gitlogue/commit/7063ca2))
+- chore(deps): bump tree-sitter-rust from 0.24.0 to 0.24.1 ([854441d](https://github.com/unhappychoice/gitlogue/commit/854441d))
+- chore(deps): bump toml from 1.0.6+spec-1.1.0 to 1.0.7+spec-1.1.0 ([fc5e347](https://github.com/unhappychoice/gitlogue/commit/fc5e347))
+- chore(deps): bump toml_edit from 0.25.4+spec-1.1.0 to 0.25.5+spec-1.1.0 ([fa2966d](https://github.com/unhappychoice/gitlogue/commit/fa2966d))
+- chore(deps): bump clap from 4.5.60 to 4.6.0 ([de9f025](https://github.com/unhappychoice/gitlogue/commit/de9f025))
+- chore(deps): bump tree-sitter-scala from 0.24.0 to 0.25.0 ([6092e78](https://github.com/unhappychoice/gitlogue/commit/6092e78))
+- chore(deps): bump tree-sitter-dart from 0.0.4 to 0.1.0 ([4b3ca69](https://github.com/unhappychoice/gitlogue/commit/4b3ca69))
+- chore(deps): bump toml from 1.0.4+spec-1.1.0 to 1.0.6+spec-1.1.0 ([5b24318](https://github.com/unhappychoice/gitlogue/commit/5b24318))
+- chore(deps): bump toml from 1.0.3+spec-1.1.0 to 1.0.4+spec-1.1.0 ([70798a0](https://github.com/unhappychoice/gitlogue/commit/70798a0))
+- chore(deps): bump toml_edit from 0.25.3+spec-1.1.0 to 0.25.4+spec-1.1.0 ([90e9666](https://github.com/unhappychoice/gitlogue/commit/90e9666))
+- chore(deps): bump tree-sitter-elixir from 0.3.4 to 0.3.5 ([5a6c0d6](https://github.com/unhappychoice/gitlogue/commit/5a6c0d6))
+- chore(deps): bump tree-sitter-lua from 0.4.1 to 0.5.0 ([a896219](https://github.com/unhappychoice/gitlogue/commit/a896219))
+- chore(deps): bump tree-sitter-md from 0.5.2 to 0.5.3 ([fbabef0](https://github.com/unhappychoice/gitlogue/commit/fbabef0))
+- chore(deps): bump chrono from 0.4.43 to 0.4.44 ([9ac6540](https://github.com/unhappychoice/gitlogue/commit/9ac6540))
+- chore(deps): bump anyhow from 1.0.101 to 1.0.102 ([a001134](https://github.com/unhappychoice/gitlogue/commit/a001134))
+- chore(deps): bump clap from 4.5.59 to 4.5.60 ([2b1c679](https://github.com/unhappychoice/gitlogue/commit/2b1c679))
+- chore(deps): bump toml_edit from 0.25.2+spec-1.1.0 to 0.25.3+spec-1.1.0 ([b0363b6](https://github.com/unhappychoice/gitlogue/commit/b0363b6))
+- chore(deps): bump toml from 1.0.2+spec-1.1.0 to 1.0.3+spec-1.1.0 ([3204a68](https://github.com/unhappychoice/gitlogue/commit/3204a68))
+- chore(deps): bump toml_edit from 0.25.1+spec-1.1.0 to 0.25.2+spec-1.1.0 ([6c7976f](https://github.com/unhappychoice/gitlogue/commit/6c7976f))
+- chore(deps): bump toml from 1.0.1+spec-1.1.0 to 1.0.2+spec-1.1.0 ([7155da2](https://github.com/unhappychoice/gitlogue/commit/7155da2))
+- chore(deps): bump clap from 4.5.58 to 4.5.59 ([8a66e7f](https://github.com/unhappychoice/gitlogue/commit/8a66e7f))
+- chore(deps): bump toml from 1.0.0+spec-1.1.0 to 1.0.1+spec-1.1.0 ([5a65afb](https://github.com/unhappychoice/gitlogue/commit/5a65afb))
+- chore(deps): bump toml_edit from 0.25.0+spec-1.1.0 to 0.25.1+spec-1.1.0 ([a489869](https://github.com/unhappychoice/gitlogue/commit/a489869))
+- docs: add key bindings section to README ([df36cc4](https://github.com/unhappychoice/gitlogue/commit/df36cc4))
+- chore: update flake.nix hashes for v0.8.0 ([9d20227](https://github.com/unhappychoice/gitlogue/commit/9d20227))
+
+
 ## [0.8.0] - 2026-02-12
 
 ### 🐛 Bug Fixes
@@ -14,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 📝 Other Changes
 
-- chore: bump version to v0.8.0 ([24a4265](https://github.com/unhappychoice/gitlogue/commit/24a4265))
+- chore: bump version to v0.8.0 ([1cec5c2](https://github.com/unhappychoice/gitlogue/commit/1cec5c2))
 - refactor: improve playback controls UX ([d8bff84](https://github.com/unhappychoice/gitlogue/commit/d8bff84))
 - added playback controlls ([2506b99](https://github.com/unhappychoice/gitlogue/commit/2506b99))
 - chore(deps): bump rand from 0.9.2 to 0.10.0 (#147) ([4c951d8](https://github.com/unhappychoice/gitlogue/commit/4c951d8))
