@@ -455,6 +455,53 @@ mod tests {
     }
 
     #[test]
+    fn save_reports_read_errors_for_existing_config_directory() -> Result<()> {
+        let temp_home = TempHome::new()?;
+        let config_path = temp_home.path.join(".config/gitlogue/config.toml");
+
+        fs::create_dir_all(&config_path)?;
+
+        let error = sample_config().save().unwrap_err().to_string();
+
+        assert!(error.contains("Failed to read config file"));
+        assert!(error.contains(&config_path.display().to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn config_path_reports_create_dir_errors_with_target_path() -> Result<()> {
+        let temp_home = TempHome::new()?;
+        let config_dir = temp_home.path.join(".config/gitlogue");
+
+        fs::create_dir_all(temp_home.path.join(".config"))?;
+        fs::write(&config_dir, "occupied")?;
+
+        let error = Config::config_path().unwrap_err().to_string();
+
+        assert!(error.contains("Failed to create config directory"));
+        assert!(error.contains(&config_dir.display().to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn themes_dir_reports_create_dir_errors_with_target_path() -> Result<()> {
+        let temp_home = TempHome::new()?;
+        let themes_dir = temp_home.path.join(".config/gitlogue/themes");
+
+        fs::create_dir_all(temp_home.path.join(".config/gitlogue"))?;
+        fs::write(&themes_dir, "occupied")?;
+
+        let error = Config::themes_dir().unwrap_err().to_string();
+
+        assert!(error.contains("Failed to create themes directory"));
+        assert!(error.contains(&themes_dir.display().to_string()));
+
+        Ok(())
+    }
+
+    #[test]
     fn themes_dir_is_created_under_the_config_home() -> Result<()> {
         let temp_home = TempHome::new()?;
         let themes_dir = Config::themes_dir()?;
