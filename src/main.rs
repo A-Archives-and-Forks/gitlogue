@@ -269,10 +269,12 @@ fn collect_ignore_patterns(
     config_patterns: &[String],
     ignore_file: Option<&Path>,
     cli_patterns: &[String],
-) -> Vec<String> {
+) -> Result<Vec<String>> {
     let mut patterns = config_patterns.to_vec();
 
-    if let Some(content) = ignore_file.and_then(|path| std::fs::read_to_string(path).ok()) {
+    if let Some(path) = ignore_file {
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read ignore file: {}", path.display()))?;
         patterns.extend(
             content
                 .lines()
@@ -282,7 +284,7 @@ fn collect_ignore_patterns(
     }
 
     patterns.extend(cli_patterns.iter().cloned());
-    patterns
+    Ok(patterns)
 }
 
 fn parse_speed_rules(cli_rules: &[String], config_rules: &[String]) -> Vec<SpeedRule> {
@@ -424,7 +426,7 @@ fn prepare_commit_playback(
         &config.ignore_patterns,
         args.ignore_file.as_deref(),
         &args.ignore,
-    );
+    )?;
     git::init_ignore_patterns(&patterns).ok();
     let order = resolve_order(args.order, &config.order, is_range_mode, is_filtered);
     let runtime = resolve_runtime_options(
@@ -463,12 +465,12 @@ fn prepare_diff_playback(
     } else {
         DiffMode::Staged
     };
+    let patterns = collect_ignore_patterns(&config.ignore_patterns, None, options.ignore)?;
+    git::init_ignore_patterns(&patterns).ok();
     let metadata = repo.get_working_tree_diff(mode)?;
     if metadata.changes.is_empty() {
         return Ok(None);
     }
-    let patterns = collect_ignore_patterns(&config.ignore_patterns, None, options.ignore);
-    git::init_ignore_patterns(&patterns).ok();
     let runtime = resolve_runtime_options(
         options.speed,
         options.theme,
@@ -877,7 +879,8 @@ mod tests {
             &["dist/**".to_string()],
             Some(ignore_file.as_path()),
             &["*.png".to_string()],
-        );
+        )
+        .unwrap();
 
         assert_eq!(
             patterns,

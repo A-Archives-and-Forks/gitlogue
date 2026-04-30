@@ -173,13 +173,14 @@ fn matches_date_filter(
     Ok(true)
 }
 
-fn detect_file_moves(diff: &mut git2::Diff, for_untracked: bool) {
+fn detect_file_moves(diff: &mut git2::Diff, for_untracked: bool) -> Result<()> {
     let mut options = DiffFindOptions::new();
     options.renames(true);
     if for_untracked {
         options.for_untracked(true);
     }
-    let _ = diff.find_similar(Some(&mut options));
+    diff.find_similar(Some(&mut options))
+        .context("Failed to detect file renames in diff")
 }
 
 pub struct GitRepository {
@@ -620,7 +621,7 @@ impl GitRepository {
             Ok(d) => d,
             Err(_) => return Ok(Vec::new()), // Skip if diff fails
         };
-        detect_file_moves(&mut diff, false);
+        detect_file_moves(&mut diff, false)?;
 
         let mut changes = Vec::new();
 
@@ -830,7 +831,7 @@ impl GitRepository {
             .repo
             .diff_tree_to_index(head_tree.as_ref(), Some(&index), Some(&mut diff_opts))
             .context("Failed to diff tree to index")?;
-        detect_file_moves(&mut diff, false);
+        detect_file_moves(&mut diff, false)?;
 
         self.extract_changes_from_diff(&diff, head_tree.as_ref(), None)
     }
@@ -850,7 +851,7 @@ impl GitRepository {
             .repo
             .diff_index_to_workdir(Some(&index), Some(&mut diff_opts))
             .context("Failed to diff index to workdir")?;
-        detect_file_moves(&mut diff, true);
+        detect_file_moves(&mut diff, true)?;
 
         // For unstaged, "old" content comes from index, "new" from workdir
         self.extract_changes_from_diff_workdir(&diff, &index)
