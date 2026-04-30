@@ -429,6 +429,27 @@ mod tests {
     }
 
     #[test]
+    fn default_highlighter_keeps_repeated_highlights_stable() {
+        let source = "fn main() { let answer = 42; }\n";
+        let mut highlighter = Highlighter::default();
+
+        assert!(highlighter.highlight(source).is_empty());
+        assert!(highlighter.set_language_from_path("main.rs"));
+
+        let first = highlighter.highlight(source);
+        let first_tree = highlighter.cached_tree.clone().unwrap();
+        let second = highlighter.highlight(source);
+        let second_tree = highlighter.cached_tree.clone().unwrap();
+
+        assert_eq!(span_tuples(&first), span_tuples(&second));
+        assert_eq!(
+            first_tree.root_node().to_sexp(),
+            second_tree.root_node().to_sexp()
+        );
+        assert_eq!(highlighter.cached_source, source);
+    }
+
+    #[test]
     fn cloned_highlighter_preserves_markdown_injection_queries() {
         let source = "```rust\nfn main() { let answer = 42; }\n```\n";
         let code_start = source.find("fn main()").unwrap();
@@ -485,6 +506,31 @@ mod tests {
     }
 
     #[test]
+    fn gather_injections_ignores_queries_without_content_or_known_language() {
+        let html = get_language_by_name("html").unwrap();
+        let source = "<script>const answer = 42;</script>";
+        let tree = parse_tree(&html, source);
+
+        let no_content_query =
+            Query::new(&html.language, "(script_element (raw_text) @none)").unwrap();
+        assert!(gather_injections(&no_content_query, &tree, source, 0).is_empty());
+
+        let no_language_query = Query::new(
+            &html.language,
+            "(script_element (raw_text) @injection.content)",
+        )
+        .unwrap();
+        assert!(gather_injections(&no_language_query, &tree, source, 0).is_empty());
+
+        let unknown_language_query = Query::new(
+            &html.language,
+            "((script_element (raw_text) @injection.content) (#set! injection.language \"madeup\"))",
+        )
+        .unwrap();
+        assert!(gather_injections(&unknown_language_query, &tree, source, 0).is_empty());
+    }
+
+    #[test]
     fn gather_injections_and_highlight_slice_preserve_source_ranges() {
         let html = get_language_by_name("html").unwrap();
         let query = Query::new(&html.language, html.injection_query.unwrap()).unwrap();
@@ -508,6 +554,18 @@ mod tests {
         assert!(offset_spans
             .iter()
             .all(|span| span.start >= 7 && span.end > 7));
+    }
+
+    #[test]
+    fn highlight_slice_returns_empty_for_invalid_queries() {
+        let rust = get_language_by_name("rust").unwrap();
+        let invalid_query_support = LanguageSupport {
+            language: rust.language,
+            highlight_query: "(",
+            injection_query: None,
+        };
+
+        assert!(highlight_slice(&invalid_query_support, "fn main() {}\n", 0, 0).is_empty());
     }
 
     #[test]
