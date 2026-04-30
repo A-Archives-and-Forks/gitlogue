@@ -1503,6 +1503,26 @@ mod tests {
     }
 
     #[test]
+    fn test_commit_filters_report_when_only_date_filters_miss_everything() {
+        let test_repo = TestRepo::new();
+        test_repo.commit_file(
+            "history.txt",
+            "one\n",
+            "Alice Example",
+            "alice@example.com",
+            1_700_001_000,
+            "alice",
+        );
+
+        let mut repo = GitRepository::open(&test_repo.path).unwrap();
+        let after_latest = DateTime::from_timestamp(1_700_001_001, 0).unwrap();
+        repo.set_after_filter(Some(after_latest));
+
+        let error = repo.next_desc_commit().unwrap_err().to_string();
+        assert!(error.contains("No commits found matching the filters in repository"));
+    }
+
+    #[test]
     fn test_commit_range_lookup_and_validation() {
         let test_repo = TestRepo::new();
         test_repo.commit_file(
@@ -1554,6 +1574,23 @@ mod tests {
         let invalid_repo = GitRepository::open(&test_repo.path).unwrap();
         assert!(invalid_repo.set_commit_range("HEAD...HEAD").is_err());
         assert!(invalid_repo.set_commit_range("HEAD").is_err());
+    }
+
+    #[test]
+    fn test_commit_range_reports_empty_but_valid_ranges() {
+        let test_repo = TestRepo::new();
+        test_repo.commit_file(
+            "src/lib.rs",
+            "pub fn only() {}\n",
+            "Alice Example",
+            "alice@example.com",
+            1_700_002_000,
+            "only",
+        );
+
+        let repo = GitRepository::open(&test_repo.path).unwrap();
+        let error = repo.set_commit_range("HEAD..HEAD").unwrap_err().to_string();
+        assert!(error.contains("No non-merge commits found in range"));
     }
 
     #[test]
