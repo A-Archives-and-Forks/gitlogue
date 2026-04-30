@@ -146,17 +146,16 @@ mod tests {
             .map(|cause| cause.to_string())
             .collect::<Vec<_>>();
 
-        assert!(
-            error
-                .first()
-                .is_some_and(|message| message.contains("Available themes:"))
+        assert!(error
+            .first()
+            .is_some_and(|message| message.contains("Available themes:")));
+        assert!(error
+            .first()
+            .is_some_and(|message| message.contains("tokyo-night")));
+        assert_eq!(
+            error.get(1),
+            Some(&"Unknown theme: missing-theme".to_string())
         );
-        assert!(
-            error
-                .first()
-                .is_some_and(|message| message.contains("tokyo-night"))
-        );
-        assert_eq!(error.get(1), Some(&"Unknown theme: missing-theme".to_string()));
     }
 
     #[test]

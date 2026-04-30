@@ -248,3 +248,151 @@ fn canonicalize(raw: &str) -> Option<&'static str> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tree_sitter::Parser;
+
+    const SUPPORTED_LANGUAGES: [(&str, bool); 31] = [
+        ("astro", true),
+        ("bash", false),
+        ("c", false),
+        ("clojure", false),
+        ("cpp", false),
+        ("csharp", false),
+        ("css", false),
+        ("dart", false),
+        ("elixir", false),
+        ("erlang", false),
+        ("go", false),
+        ("haskell", false),
+        ("html", true),
+        ("java", false),
+        ("javascript", false),
+        ("json", false),
+        ("kotlin", false),
+        ("lua", false),
+        ("markdown", true),
+        ("nix", true),
+        ("php", true),
+        ("python", false),
+        ("ruby", false),
+        ("rust", false),
+        ("scala", false),
+        ("svelte", true),
+        ("swift", false),
+        ("typescript", false),
+        ("xml", false),
+        ("yaml", false),
+        ("zig", false),
+    ];
+
+    const CANONICAL_ALIASES: [(&str, &str); 31] = [
+        ("astro", "astro"),
+        ("shell", "bash"),
+        ("h", "c"),
+        ("cljc", "clojure"),
+        ("c++", "cpp"),
+        ("c#", "csharp"),
+        ("scss", "css"),
+        ("dart", "dart"),
+        ("exs", "elixir"),
+        ("escript", "erlang"),
+        ("golang", "go"),
+        ("lhs", "haskell"),
+        ("htm", "html"),
+        ("java", "java"),
+        ("cjs", "javascript"),
+        ("json5", "json"),
+        ("kts", "kotlin"),
+        ("lua", "lua"),
+        ("md", "markdown"),
+        ("nix", "nix"),
+        ("phtml", "php"),
+        ("pyw", "python"),
+        ("gemspec", "ruby"),
+        ("rs", "rust"),
+        ("sbt", "scala"),
+        ("svelte", "svelte"),
+        ("swift", "swift"),
+        ("tsx", "typescript"),
+        ("xslt", "xml"),
+        ("yml", "yaml"),
+        ("zig", "zig"),
+    ];
+
+    fn query_signature(name: &str) -> (&'static str, Option<&'static str>) {
+        let support = get_language_by_name(name).expect("language should resolve");
+        (support.highlight_query, support.injection_query)
+    }
+
+    #[test]
+    fn every_supported_language_loads_into_parser() {
+        SUPPORTED_LANGUAGES
+            .iter()
+            .for_each(|(name, has_injection)| {
+                let support = get_language_by_name(name).expect("language should resolve");
+                let mut parser = Parser::new();
+                assert!(parser.set_language(&support.language).is_ok(), "{name}");
+                assert!(!support.highlight_query.is_empty(), "{name}");
+                assert_eq!(support.injection_query.is_some(), *has_injection, "{name}");
+            });
+    }
+
+    #[test]
+    fn aliases_resolve_to_the_same_language_support() {
+        CANONICAL_ALIASES.iter().for_each(|(alias, canonical)| {
+            assert_eq!(canonicalize(alias), Some(*canonical));
+            assert_eq!(
+                query_signature(alias),
+                query_signature(canonical),
+                "{alias}"
+            );
+        });
+    }
+
+    #[test]
+    fn get_language_by_name_trims_whitespace_and_leading_dots() {
+        [
+            (" .TSX ", "typescript"),
+            ("\t.C#\n", "csharp"),
+            ("  .MD  ", "markdown"),
+        ]
+        .iter()
+        .for_each(|(raw, canonical)| {
+            assert_eq!(query_signature(raw), query_signature(canonical), "{raw}");
+        });
+    }
+
+    #[test]
+    fn get_language_uses_path_extensions_and_rejects_unknown_inputs() {
+        [
+            ("src/main.rs", "rust"),
+            ("styles/site.scss", "css"),
+            ("components/App.tsx", "typescript"),
+            ("templates/index.phtml", "php"),
+            ("docs/guide.md", "markdown"),
+        ]
+        .iter()
+        .for_each(|(path, canonical)| {
+            let support = get_language(Path::new(path)).expect("path should resolve");
+            assert_eq!(
+                (support.highlight_query, support.injection_query),
+                query_signature(canonical),
+                "{path}"
+            );
+        });
+
+        ["Dockerfile", "archive.tar.gz", "notes.custom"]
+            .iter()
+            .for_each(|path| assert!(get_language(Path::new(path)).is_none(), "{path}"));
+    }
+
+    #[test]
+    fn unknown_language_names_return_none() {
+        ["", ".", "unknown", "gitlogue"]
+            .iter()
+            .for_each(|name| assert!(get_language_by_name(name).is_none(), "{name}"));
+    }
+}
