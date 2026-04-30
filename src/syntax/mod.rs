@@ -123,9 +123,9 @@ impl Highlighter {
 
     fn set_language_support(&mut self, support: LanguageSupport) -> bool {
         self.clear_language();
-        if self.parser.set_language(&support.language).is_err() {
-            return false;
-        }
+        self.parser
+            .set_language(&support.language)
+            .expect("bundled tree-sitter languages must match the runtime ABI");
         let Ok(highlight_query) = Query::new(&support.language, support.highlight_query) else {
             return false;
         };
@@ -290,12 +290,16 @@ fn capture_index(query: &Query, name: &str) -> Option<u32> {
 }
 
 fn resolve_injection_language(query: &Query, m: &QueryMatch, source: &str) -> Option<String> {
-    for prop in query.property_settings(m.pattern_index) {
-        if prop.key.as_ref() == "injection.language" {
-            if let Some(value) = &prop.value {
-                return Some(value.to_ascii_lowercase());
-            }
-        }
+    if let Some(value) = query
+        .property_settings(m.pattern_index)
+        .iter()
+        .find_map(|prop| {
+            (prop.key.as_ref() == "injection.language")
+                .then_some(prop.value.as_ref())
+                .flatten()
+        })
+    {
+        return Some(value.as_ref().to_ascii_lowercase());
     }
     let lang_idx = capture_index(query, "injection.language")?;
     m.captures
@@ -319,15 +323,15 @@ fn highlight_slice(
     depth: u8,
 ) -> Vec<HighlightSpan> {
     let mut parser = Parser::new();
-    if parser.set_language(&support.language).is_err() {
-        return Vec::new();
-    }
+    parser
+        .set_language(&support.language)
+        .expect("bundled tree-sitter languages must match the runtime ABI");
     let Ok(highlight_query) = Query::new(&support.language, support.highlight_query) else {
         return Vec::new();
     };
-    let Some(tree) = parser.parse(source, None) else {
-        return Vec::new();
-    };
+    let tree = parser
+        .parse(source, None)
+        .expect("fresh highlight parsers should not be cancelled");
 
     let outer = collect_spans(&highlight_query, &tree, source);
     let injections = support
