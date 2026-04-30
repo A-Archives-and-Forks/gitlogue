@@ -10,7 +10,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{
-    backend::CrosstermBackend,
+    backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
     text::{Line, Span},
@@ -446,6 +446,32 @@ impl<'a> UI<'a> {
         true
     }
 
+    fn sync_exit_state(&mut self) {
+        if self.should_exit.load(Ordering::Relaxed) {
+            self.state = UIState::Finished;
+        }
+    }
+
+    fn draw_if_needed<B: Backend>(
+        &mut self,
+        terminal: &mut Terminal<B>,
+        needs_redraw: bool,
+    ) -> Result<()>
+    where
+        B::Error: std::error::Error + Send + Sync + 'static,
+    {
+        needs_redraw
+            .then(|| terminal.draw(|f| self.render(f)))
+            .transpose()?;
+        Ok(())
+    }
+
+    fn handle_event(&mut self, event: Event) {
+        if let Event::Key(key) = event {
+            self.handle_key_event(key);
+        }
+    }
+
     /// Runs the main UI event loop.
     pub fn run(&mut self) -> Result<()> {
         enable_raw_mode()?;
@@ -474,10 +500,7 @@ impl<'a> UI<'a> {
 
     fn run_loop(&mut self, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
         loop {
-            // Check for Ctrl+C signal
-            if self.should_exit.load(Ordering::Relaxed) {
-                self.state = UIState::Finished;
-            }
+            self.sync_exit_state();
 
             // Update viewport dimensions for scroll calculation
             let size = terminal.size()?;
@@ -490,16 +513,11 @@ impl<'a> UI<'a> {
 
             // Tick the animation engine
             let needs_redraw = self.engine.tick();
-
-            if needs_redraw {
-                terminal.draw(|f| self.render(f))?;
-            }
+            self.draw_if_needed(terminal, needs_redraw)?;
 
             // Poll for keyboard events at frame rate
             if event::poll(std::time::Duration::from_millis(8))? {
-                if let Event::Key(key) = event::read()? {
-                    self.handle_key_event(key);
-                }
+                self.handle_event(event::read()?);
             }
 
             if !self.advance_state_after_tick(Instant::now()) {
@@ -772,7 +790,7 @@ mod tests {
     use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::sync::atomic::{AtomicU64, Ordering as CounterOrdering};
+    use std::sync::atomic::{AtomicU64, Ordering, Ordering as CounterOrdering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     struct TestRepo {
@@ -892,6 +910,20 @@ mod tests {
         )
     }
 
+    fn test_ui_with_exit_flag(should_exit: Arc<AtomicBool>) -> UI<'static> {
+        UI::build(
+            16,
+            None,
+            Theme::default(),
+            PlaybackOrder::Asc,
+            false,
+            None,
+            false,
+            Vec::new(),
+            should_exit,
+        )
+    }
+
     fn test_ui() -> UI<'static> {
         test_ui_with_repo(None)
     }
@@ -999,6 +1031,47 @@ mod tests {
         assert_eq!(ui.state, UIState::About);
         assert!(ui.prev_state.is_none());
         assert_eq!(ui.playback_state, PlaybackState::Paused);
+    }
+
+    #[test]
+    fn sync_exit_state_marks_ui_finished_only_after_signal_flag_is_set() {
+        let should_exit = Arc::new(AtomicBool::new(false));
+        let mut ui = test_ui_with_exit_flag(should_exit.clone());
+
+        ui.sync_exit_state();
+        assert_eq!(ui.state, UIState::Playing);
+
+        should_exit.store(true, Ordering::Relaxed);
+        ui.sync_exit_state();
+        assert_eq!(ui.state, UIState::Finished);
+    }
+
+    #[test]
+    fn draw_if_needed_renders_only_when_requested() {
+        let mut ui = test_ui();
+        ui.state = UIState::Menu;
+
+        let backend = TestBackend::new(40, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        ui.draw_if_needed(&mut terminal, false).unwrap();
+        assert!(buffer_text(terminal.backend().buffer()).trim().is_empty());
+
+        ui.draw_if_needed(&mut terminal, true).unwrap();
+        let rendered = buffer_text(terminal.backend().buffer());
+        assert!(rendered.contains("Menu"));
+        assert!(rendered.contains("Exit"));
+    }
+
+    #[test]
+    fn handle_event_dispatches_keys_and_ignores_non_key_events() {
+        let mut ignored_ui = test_ui();
+        ignored_ui.handle_event(Event::Resize(80, 24));
+        assert_eq!(ignored_ui.state, UIState::Playing);
+
+        let mut quit_ui = test_ui();
+        quit_ui.handle_event(Event::Key(key_event(KeyCode::Char('q'))));
+        assert_eq!(quit_ui.state, UIState::Finished);
     }
 
     #[test]
