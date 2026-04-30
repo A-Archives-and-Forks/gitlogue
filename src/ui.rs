@@ -160,11 +160,32 @@ impl<'a> UI<'a> {
     }
 
     fn setup_signal_handler(should_exit: Arc<AtomicBool>) {
-        ctrlc::set_handler(move || {
-            let mut stdout = io::stdout();
-            Self::handle_external_signal(should_exit.as_ref(), &mut stdout, std::process::exit);
-        })
+        ctrlc::set_handler(Self::build_signal_handler(
+            should_exit,
+            io::stdout,
+            std::process::exit,
+        ))
         .expect("Error setting Ctrl-C handler");
+    }
+
+    fn build_signal_handler<W, MakeWriter, Exit, ExitResult>(
+        should_exit: Arc<AtomicBool>,
+        make_writer: MakeWriter,
+        exit: Exit,
+    ) -> impl FnMut() + Send + 'static
+    where
+        W: io::Write,
+        MakeWriter: Fn() -> W + Send + Sync + 'static,
+        Exit: Fn(i32) -> ExitResult + Send + Sync + 'static,
+    {
+        let make_writer = Arc::new(make_writer);
+        let exit = Arc::new(exit);
+        move || {
+            let mut writer = make_writer.as_ref()();
+            Self::handle_external_signal(should_exit.as_ref(), &mut writer, |code| {
+                exit.as_ref()(code)
+            });
+        }
     }
 
     fn handle_external_signal<W: io::Write, F, T>(
@@ -284,10 +305,8 @@ impl<'a> UI<'a> {
     fn handle_next(&mut self) {
         if let Some(index) = self.history_index {
             if index + 1 < self.history.len() {
-                let target = index + 1;
-                if self.play_history_commit(target) {
-                    return;
-                }
+                let _ = self.play_history_commit(index + 1);
+                return;
             }
         }
 
@@ -803,6 +822,7 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering, Ordering as CounterOrdering};
+    use std::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     struct TestRepo {
@@ -948,6 +968,20 @@ mod tests {
         event::KeyEvent::new(code, KeyModifiers::NONE)
     }
 
+    #[derive(Clone)]
+    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl io::Write for SharedWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
     fn apply_until_metadata_is_visible(ui: &mut UI<'_>) {
         while ui.engine.current_metadata().is_none() {
             assert!(ui.engine.manual_step(StepMode::Change));
@@ -998,6 +1032,31 @@ mod tests {
         assert!(should_exit.load(Ordering::SeqCst));
         assert_eq!(exit_code.get(), Some(0));
         assert!(!output.is_empty());
+    }
+
+    #[test]
+    fn build_signal_handler_invokes_external_signal_cleanup() {
+        let should_exit = Arc::new(AtomicBool::new(false));
+        let exit_code = Arc::new(Mutex::new(None));
+        let output = Arc::new(Mutex::new(Vec::new()));
+
+        let mut handler = UI::build_signal_handler(
+            should_exit.clone(),
+            {
+                let output = output.clone();
+                move || SharedWriter(output.clone())
+            },
+            {
+                let exit_code = exit_code.clone();
+                move |code| *exit_code.lock().unwrap() = Some(code)
+            },
+        );
+
+        handler();
+
+        assert!(should_exit.load(Ordering::SeqCst));
+        assert_eq!(*exit_code.lock().unwrap(), Some(0));
+        assert!(!output.lock().unwrap().is_empty());
     }
 
     #[test]
