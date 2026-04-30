@@ -1,12 +1,19 @@
-# gitlogue
-
-<a title="This tool is Tool of The Week on Terminal Trove, The $HOME of all things in the terminal" href="https://terminaltrove.com/gitlogue/"><img src="https://cdn.terminaltrove.com/media/badges/tool_of_the_week/svg/terminal_trove_tool_of_the_week_green_on_black_bg.svg" alt="Terminal Trove Tool of The Week" height="48" /></a>
-
 <p align="center">
-  <img src="docs/assets/demo.gif" alt="gitlogue demo" style="max-width: 100%; width: 800px;" />
+  <img src="docs/assets/demo.gif" alt="gitlogue" width="820">
 </p>
 
-A cinematic Git commit replay tool for the terminal, turning your Git history into a living, animated story.
+<p align="center">
+  <a href="https://crates.io/crates/gitlogue"><img src="https://img.shields.io/crates/v/gitlogue.svg?style=flat-square&color=E06B4B" alt="crates.io"></a>
+  <a href="https://github.com/unhappychoice/gitlogue/releases"><img src="https://img.shields.io/github/v/release/unhappychoice/gitlogue?style=flat-square&color=E0C14B&label=release" alt="release"></a>
+  <a href="https://github.com/unhappychoice/gitlogue/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/unhappychoice/gitlogue/ci.yml?branch=main&style=flat-square&label=CI" alt="CI"></a>
+  <a href="https://github.com/unhappychoice/gitlogue/blob/main/LICENSE"><img src="https://img.shields.io/crates/l/gitlogue.svg?style=flat-square" alt="license"></a>
+  <a href="https://terminaltrove.com/gitlogue/"><img src="https://img.shields.io/badge/Terminal_Trove-Tool_of_The_Week-2ea043?style=flat-square" alt="Terminal Trove Tool of The Week"></a>
+</p>
+
+<p align="center">
+  <strong>A cinematic Git commit replay tool for the terminal.</strong><br>
+  <sub>Turn your Git history into a living, animated story — typing, syntax highlighting, file tree transitions.</sub>
+</p>
 
 Watch commits unfold with realistic typing animations, syntax highlighting, and file tree transitions, transforming code changes into a visual experience.
 
