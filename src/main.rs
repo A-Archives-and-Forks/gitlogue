@@ -339,6 +339,22 @@ struct RuntimeOptions {
     speed_rules: Vec<SpeedRule>,
 }
 
+struct DiffCommandOptions<'a> {
+    unstaged: bool,
+    speed: Option<u64>,
+    theme: Option<&'a str>,
+    background: Option<bool>,
+    loop_playback: Option<bool>,
+    ignore: &'a [String],
+    speed_rule: &'a [String],
+}
+
+struct DiffPlaybackPlan {
+    mode: DiffMode,
+    metadata: git::CommitMetadata,
+    runtime: RuntimeOptions,
+}
+
 fn load_theme_with_background(
     cli_theme: Option<&str>,
     cli_background: Option<bool>,
@@ -368,6 +384,38 @@ fn resolve_runtime_options(
         loop_playback: cli_loop_playback.unwrap_or(loop_default),
         speed_rules: parse_speed_rules(cli_speed_rules, &config.speed_rules),
     })
+}
+
+fn prepare_diff_playback(
+    repo: &GitRepository,
+    options: DiffCommandOptions<'_>,
+    config: &Config,
+) -> Result<Option<DiffPlaybackPlan>> {
+    let mode = if options.unstaged {
+        DiffMode::Unstaged
+    } else {
+        DiffMode::Staged
+    };
+    let metadata = repo.get_working_tree_diff(mode)?;
+    if metadata.changes.is_empty() {
+        return Ok(None);
+    }
+    let patterns = collect_ignore_patterns(&config.ignore_patterns, None, options.ignore);
+    git::init_ignore_patterns(&patterns).ok();
+    let runtime = resolve_runtime_options(
+        options.speed,
+        options.theme,
+        options.background,
+        options.loop_playback,
+        options.speed_rule,
+        config,
+        false,
+    )?;
+    Ok(Some(DiffPlaybackPlan {
+        mode,
+        metadata,
+        runtime,
+    }))
 }
 
 fn format_theme_list() -> String {
@@ -424,45 +472,47 @@ fn main() -> Result<()> {
             } => {
                 let repo_path = args.validate()?;
                 let repo = GitRepository::open(&repo_path)?;
-
-                let mode = if *unstaged {
-                    DiffMode::Unstaged
-                } else {
-                    DiffMode::Staged
-                };
-
-                let metadata = repo.get_working_tree_diff(mode)?;
-
-                if metadata.changes.is_empty() {
+                let config = Config::load()?;
+                let Some(plan) = prepare_diff_playback(
+                    &repo,
+                    DiffCommandOptions {
+                        unstaged: *unstaged,
+                        speed: *speed,
+                        theme: theme.as_deref(),
+                        background: *background,
+                        loop_playback: *loop_playback,
+                        ignore,
+                        speed_rule,
+                    },
+                    &config,
+                )?
+                else {
                     println!("No changes to display");
                     return Ok(());
-                }
-
-                let config = Config::load()?;
-
-                let patterns = collect_ignore_patterns(&config.ignore_patterns, None, ignore);
-                git::init_ignore_patterns(&patterns).ok();
-                let runtime = resolve_runtime_options(
-                    *speed,
-                    theme.as_deref(),
-                    *background,
-                    *loop_playback,
-                    speed_rule,
-                    &config,
-                    false,
-                )?;
+                };
+                let DiffPlaybackPlan {
+                    mode,
+                    metadata,
+                    runtime,
+                } = plan;
+                let RuntimeOptions {
+                    speed,
+                    theme,
+                    loop_playback,
+                    speed_rules,
+                } = runtime;
 
                 // Create UI - pass repo ref only if looping (to refresh diff)
-                let repo_ref = runtime.loop_playback.then_some(&repo);
+                let repo_ref = loop_playback.then_some(&repo);
                 let mut ui = UI::new(
-                    runtime.speed,
+                    speed,
                     repo_ref,
-                    runtime.theme,
+                    theme,
                     PlaybackOrder::Asc,
-                    runtime.loop_playback,
+                    loop_playback,
                     None,
                     false,
-                    runtime.speed_rules,
+                    speed_rules,
                 );
                 ui.set_diff_mode(Some(mode));
                 ui.load_commit(metadata);
@@ -903,6 +953,112 @@ mod tests {
         assert_eq!(saved.theme, "nord");
         assert!(message.contains("Theme set to 'nord'"));
         assert!(message.contains(&temp_home.path.display().to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn prepare_diff_playback_returns_none_for_clean_tree() -> Result<()> {
+        let test_repo = TestRepo::new();
+        test_repo.commit_file("src/lib.rs", "fn clean() {}\n", "clean", 1);
+        let repo = GitRepository::open(&test_repo.path)?;
+        let mut config = sample_config();
+        config.ignore_patterns.clear();
+        let empty = Vec::<String>::new();
+
+        let plan = prepare_diff_playback(
+            &repo,
+            DiffCommandOptions {
+                unstaged: false,
+                speed: None,
+                theme: None,
+                background: None,
+                loop_playback: None,
+                ignore: &empty,
+                speed_rule: &empty,
+            },
+            &config,
+        )?;
+
+        assert!(plan.is_none());
+
+        Ok(())
+    }
+
+    #[test]
+    fn prepare_diff_playback_reads_staged_changes_and_runtime_overrides() -> Result<()> {
+        let test_repo = TestRepo::new();
+        test_repo.commit_file("src/lib.rs", "fn clean() {}\n", "clean", 1);
+        test_repo.commit_file("README.md", "before\n", "docs", 2);
+        fs::write(test_repo.path.join("src/lib.rs"), "fn staged() {}\n")?;
+        let mut index = test_repo.repo.index()?;
+        index.add_path(Path::new("src/lib.rs"))?;
+        index.write()?;
+        let repo = GitRepository::open(&test_repo.path)?;
+        let mut config = sample_config();
+        config.ignore_patterns.clear();
+        let cli_rules = vec!["src/**/*.rs:5".to_string()];
+        let empty = Vec::<String>::new();
+        let nord = Theme::load("nord")?;
+
+        let plan = prepare_diff_playback(
+            &repo,
+            DiffCommandOptions {
+                unstaged: false,
+                speed: Some(7),
+                theme: Some("nord"),
+                background: Some(true),
+                loop_playback: Some(true),
+                ignore: &empty,
+                speed_rule: &cli_rules,
+            },
+            &config,
+        )?
+        .expect("staged changes should produce a playback plan");
+
+        assert_eq!(plan.mode, DiffMode::Staged);
+        assert_eq!(plan.metadata.hash, "working-tree");
+        assert_eq!(plan.metadata.message, "Staged changes");
+        assert_eq!(plan.runtime.speed, 7);
+        assert!(plan.runtime.loop_playback);
+        assert_eq!(plan.runtime.theme.background_left, nord.background_left);
+        assert_eq!(plan.runtime.theme.background_right, nord.background_right);
+        assert_eq!(plan.runtime.speed_rules.len(), 2);
+        assert!(plan.runtime.speed_rules[0].matches("src/main.rs"));
+        assert!(plan.runtime.speed_rules[1].matches("README.md"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn prepare_diff_playback_reads_unstaged_changes() -> Result<()> {
+        let test_repo = TestRepo::new();
+        test_repo.commit_file("src/lib.rs", "fn clean() {}\n", "clean", 1);
+        fs::write(test_repo.path.join("src/lib.rs"), "fn unstaged() {}\n")?;
+        let repo = GitRepository::open(&test_repo.path)?;
+        let mut config = sample_config();
+        config.ignore_patterns.clear();
+        let empty = Vec::<String>::new();
+
+        let plan = prepare_diff_playback(
+            &repo,
+            DiffCommandOptions {
+                unstaged: true,
+                speed: None,
+                theme: None,
+                background: None,
+                loop_playback: None,
+                ignore: &empty,
+                speed_rule: &empty,
+            },
+            &config,
+        )?
+        .expect("unstaged changes should produce a playback plan");
+
+        assert_eq!(plan.mode, DiffMode::Unstaged);
+        assert_eq!(plan.metadata.hash, "working-tree");
+        assert_eq!(plan.metadata.message, "Unstaged changes");
+        assert!(!plan.runtime.loop_playback);
 
         Ok(())
     }
