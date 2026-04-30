@@ -45,6 +45,12 @@ fn default_ignore_patterns() -> Vec<String> {
     Vec::new()
 }
 
+#[cfg(test)]
+pub(crate) fn test_home_env_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -214,7 +220,7 @@ mod tests {
     use super::*;
     use std::env;
     use std::ffi::OsString;
-    use std::sync::{Mutex, MutexGuard, OnceLock};
+    use std::sync::MutexGuard;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     const HOME_VARS: [&str; 4] = ["HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH"];
@@ -227,7 +233,7 @@ mod tests {
 
     impl TempHome {
         fn new() -> Result<Self> {
-            let lock = env_lock()
+            let lock = test_home_env_lock()
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             let path = env::temp_dir().join(format!(
@@ -267,11 +273,6 @@ mod tests {
 
             let _ = fs::remove_dir_all(&self.path);
         }
-    }
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     fn sample_config() -> Config {

@@ -332,6 +332,65 @@ fn should_keep_repo_ref(
     is_range_mode || is_filtered || !is_commit_specified || loop_playback
 }
 
+struct RuntimeOptions {
+    speed: u64,
+    theme: Theme,
+    loop_playback: bool,
+    speed_rules: Vec<SpeedRule>,
+}
+
+fn load_theme_with_background(
+    cli_theme: Option<&str>,
+    cli_background: Option<bool>,
+    config: &Config,
+) -> Result<Theme> {
+    let theme = Theme::load(cli_theme.unwrap_or(&config.theme))?;
+
+    Ok(if cli_background.unwrap_or(config.background) {
+        theme
+    } else {
+        theme.with_transparent_background()
+    })
+}
+
+fn resolve_runtime_options(
+    cli_speed: Option<u64>,
+    cli_theme: Option<&str>,
+    cli_background: Option<bool>,
+    cli_loop_playback: Option<bool>,
+    cli_speed_rules: &[String],
+    config: &Config,
+    loop_default: bool,
+) -> Result<RuntimeOptions> {
+    Ok(RuntimeOptions {
+        speed: cli_speed.unwrap_or(config.speed),
+        theme: load_theme_with_background(cli_theme, cli_background, config)?,
+        loop_playback: cli_loop_playback.unwrap_or(loop_default),
+        speed_rules: parse_speed_rules(cli_speed_rules, &config.speed_rules),
+    })
+}
+
+fn format_theme_list() -> String {
+    std::iter::once("Available themes:".to_string())
+        .chain(
+            Theme::available_themes()
+                .into_iter()
+                .map(|theme| format!("  - {theme}")),
+        )
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn persist_theme_selection(name: &str) -> Result<String> {
+    Theme::load(name)?;
+
+    let mut config = Config::load().unwrap_or_default();
+    config.theme = name.to_string();
+    config.save()?;
+
+    Config::config_path().map(|path| format!("Theme set to '{name}' in {}", path.display()))
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
 
@@ -346,23 +405,11 @@ fn main() -> Result<()> {
         match command {
             Commands::Theme { command } => match command {
                 ThemeCommands::List => {
-                    println!("Available themes:");
-                    for theme in Theme::available_themes() {
-                        println!("  - {}", theme);
-                    }
+                    println!("{}", format_theme_list());
                     return Ok(());
                 }
                 ThemeCommands::Set { name } => {
-                    // Validate theme exists
-                    Theme::load(name)?;
-
-                    // Load existing config or create new one
-                    let mut config = Config::load().unwrap_or_default();
-                    config.theme = name.clone();
-                    config.save()?;
-
-                    let config_path = Config::config_path()?;
-                    println!("Theme set to '{}' in {}", name, config_path.display());
+                    println!("{}", persist_theme_selection(name)?);
                     return Ok(());
                 }
             },
@@ -395,30 +442,27 @@ fn main() -> Result<()> {
 
                 let patterns = collect_ignore_patterns(&config.ignore_patterns, None, ignore);
                 git::init_ignore_patterns(&patterns).ok();
-
-                let theme_name = theme.as_deref().unwrap_or(&config.theme);
-                let speed = speed.unwrap_or(config.speed);
-                let background = background.unwrap_or(config.background);
-                let loop_playback = loop_playback.unwrap_or(false);
-
-                let mut theme = Theme::load(theme_name)?;
-                if !background {
-                    theme = theme.with_transparent_background();
-                }
-
-                let speed_rules = parse_speed_rules(speed_rule, &config.speed_rules);
+                let runtime = resolve_runtime_options(
+                    *speed,
+                    theme.as_deref(),
+                    *background,
+                    *loop_playback,
+                    speed_rule,
+                    &config,
+                    false,
+                )?;
 
                 // Create UI - pass repo ref only if looping (to refresh diff)
-                let repo_ref = loop_playback.then_some(&repo);
+                let repo_ref = runtime.loop_playback.then_some(&repo);
                 let mut ui = UI::new(
-                    speed,
+                    runtime.speed,
                     repo_ref,
-                    theme,
+                    runtime.theme,
                     PlaybackOrder::Asc,
-                    loop_playback,
+                    runtime.loop_playback,
                     None,
                     false,
-                    speed_rules,
+                    runtime.speed_rules,
                 );
                 ui.set_diff_mode(Some(mode));
                 ui.load_commit(metadata);
@@ -461,22 +505,18 @@ fn main() -> Result<()> {
         &args.ignore,
     );
     git::init_ignore_patterns(&patterns).ok();
-    let theme_name = args.theme.as_deref().unwrap_or(&config.theme);
-    let speed = args.speed.unwrap_or(config.speed);
-    let background = args.background.unwrap_or(config.background);
     let order = resolve_order(args.order, &config.order, is_range_mode, is_filtered);
-
-    let loop_playback = args.loop_playback.unwrap_or(config.loop_playback);
-    let mut theme = Theme::load(theme_name)?;
-
-    // Apply transparent background if requested
-    if !background {
-        theme = theme.with_transparent_background();
-    }
+    let runtime = resolve_runtime_options(
+        args.speed,
+        args.theme.as_deref(),
+        args.background,
+        args.loop_playback,
+        &args.speed_rule,
+        &config,
+        config.loop_playback,
+    )?;
 
     let metadata = load_initial_commit(&repo, args.commit.as_deref(), order)?;
-
-    let speed_rules = parse_speed_rules(&args.speed_rule, &config.speed_rules);
 
     // Create UI with repository reference
     // Filtered modes (range/author/date) always need repo ref for iteration
@@ -484,18 +524,18 @@ fn main() -> Result<()> {
         is_range_mode,
         is_filtered,
         is_commit_specified,
-        loop_playback,
+        runtime.loop_playback,
     )
     .then_some(&repo);
     let mut ui = UI::new(
-        speed,
+        runtime.speed,
         repo_ref,
-        theme,
+        runtime.theme,
         order,
-        loop_playback,
+        runtime.loop_playback,
         args.commit.clone(),
         is_range_mode,
-        speed_rules,
+        runtime.speed_rules,
     );
     ui.load_commit(metadata);
     ui.run()?;
@@ -507,13 +547,25 @@ fn main() -> Result<()> {
 mod tests {
     use super::*;
     use git2::{Repository, Signature, Time};
+    use ratatui::style::Color;
+    use std::env;
+    use std::ffi::OsString;
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering as CounterOrdering};
+    use std::sync::MutexGuard;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    const HOME_VARS: [&str; 4] = ["HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH"];
 
     struct TestRepo {
         path: PathBuf,
         repo: Repository,
+    }
+
+    struct TempHome {
+        _lock: MutexGuard<'static, ()>,
+        path: PathBuf,
+        original_vars: Vec<(&'static str, Option<OsString>)>,
     }
 
     impl TestRepo {
@@ -588,9 +640,65 @@ mod tests {
         }
     }
 
+    impl TempHome {
+        fn new() -> Result<Self> {
+            let lock = config::test_home_env_lock()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let path = env::temp_dir().join(format!(
+                "gitlogue-main-home-{}-{}",
+                std::process::id(),
+                SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+            ));
+
+            fs::create_dir_all(&path)?;
+
+            let original_vars = HOME_VARS
+                .iter()
+                .map(|name| (*name, env::var_os(name)))
+                .collect();
+
+            env::set_var("HOME", &path);
+            env::set_var("USERPROFILE", &path);
+            env::remove_var("HOMEDRIVE");
+            env::remove_var("HOMEPATH");
+
+            Ok(Self {
+                _lock: lock,
+                path,
+                original_vars,
+            })
+        }
+    }
+
     impl Drop for TestRepo {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    impl Drop for TempHome {
+        fn drop(&mut self) {
+            self.original_vars
+                .iter()
+                .for_each(|(name, value)| match value {
+                    Some(value) => env::set_var(name, value),
+                    None => env::remove_var(name),
+                });
+
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn sample_config() -> Config {
+        Config {
+            theme: "tokyo-night".to_string(),
+            speed: 12,
+            background: false,
+            order: "desc".to_string(),
+            loop_playback: true,
+            ignore_patterns: vec!["dist/**".to_string()],
+            speed_rules: vec!["*.md:40".to_string()],
         }
     }
 
@@ -738,5 +846,94 @@ mod tests {
         assert!(should_keep_repo_ref(false, false, false, false));
         assert!(should_keep_repo_ref(false, false, true, true));
         assert!(!should_keep_repo_ref(false, false, true, false));
+    }
+
+    #[test]
+    fn resolve_runtime_options_merges_cli_overrides_and_loop_defaults() {
+        let config = sample_config();
+        let diff_runtime =
+            resolve_runtime_options(None, None, None, None, &[], &config, false).unwrap();
+
+        assert_eq!(diff_runtime.speed, config.speed);
+        assert!(!diff_runtime.loop_playback);
+        assert_eq!(diff_runtime.theme.background_left, Color::Reset);
+        assert_eq!(diff_runtime.theme.background_right, Color::Reset);
+        assert_eq!(diff_runtime.speed_rules.len(), 1);
+        assert!(diff_runtime.speed_rules[0].matches("README.md"));
+
+        let cli_rules = vec!["src/**/*.rs:5".to_string(), "invalid".to_string()];
+        let cli_runtime = resolve_runtime_options(
+            Some(7),
+            Some("nord"),
+            Some(true),
+            Some(true),
+            &cli_rules,
+            &config,
+            false,
+        )
+        .unwrap();
+
+        let nord = Theme::load("nord").unwrap();
+
+        assert_eq!(cli_runtime.speed, 7);
+        assert!(cli_runtime.loop_playback);
+        assert_eq!(cli_runtime.theme.background_left, nord.background_left);
+        assert_eq!(cli_runtime.theme.background_right, nord.background_right);
+        assert_eq!(cli_runtime.speed_rules.len(), 2);
+        assert!(cli_runtime.speed_rules[0].matches("src/main.rs"));
+        assert!(cli_runtime.speed_rules[1].matches("README.md"));
+    }
+
+    #[test]
+    fn format_theme_list_includes_header_and_every_theme() {
+        let output = format_theme_list();
+
+        assert!(output.starts_with("Available themes:"));
+        assert!(Theme::available_themes()
+            .into_iter()
+            .all(|theme| output.contains(&format!("  - {theme}"))));
+    }
+
+    #[test]
+    fn persist_theme_selection_saves_theme_under_temp_home() -> Result<()> {
+        let temp_home = TempHome::new()?;
+        let message = persist_theme_selection("nord")?;
+        let saved = Config::load()?;
+
+        assert_eq!(saved.theme, "nord");
+        assert!(message.contains("Theme set to 'nord'"));
+        assert!(message.contains(&temp_home.path.display().to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn args_parser_supports_bool_flags_and_rejects_blank_author() {
+        let args = Args::try_parse_from([
+            "gitlogue",
+            "--background=false",
+            "--loop",
+            "--ignore",
+            "*.tmp",
+            "--ignore",
+            "dist/**",
+            "--speed-rule",
+            "*.rs:5",
+        ])
+        .unwrap();
+
+        assert_eq!(args.background, Some(false));
+        assert_eq!(args.loop_playback, Some(true));
+        assert_eq!(
+            args.ignore,
+            vec!["*.tmp".to_string(), "dist/**".to_string()]
+        );
+        assert_eq!(args.speed_rule, vec!["*.rs:5".to_string()]);
+
+        let error = Args::try_parse_from(["gitlogue", "--author", "   "])
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("Author pattern cannot be empty"));
     }
 }
