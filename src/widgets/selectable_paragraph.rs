@@ -442,3 +442,101 @@ impl Widget for SelectableParagraph<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{
+        layout::Rect,
+        style::{Color, Style},
+        text::Span,
+        widgets::Widget,
+    };
+
+    fn render_paragraph(widget: SelectableParagraph<'static>, width: u16, height: u16) -> Buffer {
+        let area = Rect::new(0, 0, width, height);
+        let mut buffer = Buffer::empty(area);
+        widget.render(area, &mut buffer);
+        buffer
+    }
+
+    fn row_symbols(buffer: &Buffer, y: u16) -> String {
+        (0..buffer.area.width)
+            .map(|x| buffer[(x, y)].symbol())
+            .collect::<Vec<_>>()
+            .join("")
+    }
+
+    #[test]
+    fn wrap_line_respects_unicode_display_width() {
+        let wrapped = SelectableParagraph::wrap_line(&Line::from("ab界cd"), 4, 2);
+
+        assert_eq!(wrapped.len(), 2);
+        assert_eq!(wrapped[0].to_string(), "ab界");
+        assert_eq!(wrapped[1].to_string(), "cd");
+    }
+
+    #[test]
+    fn wrap_line_preserves_span_styles_across_boundaries() {
+        let line = Line::from(vec![
+            Span::styled("ab", Style::default().fg(Color::Red)),
+            Span::styled("cd", Style::default().fg(Color::Blue)),
+        ]);
+        let wrapped = SelectableParagraph::wrap_line(&line, 3, 3);
+
+        assert_eq!(wrapped.len(), 2);
+        assert_eq!(wrapped[0].spans[0].content.as_ref(), "ab");
+        assert_eq!(wrapped[0].spans[0].style.fg, Some(Color::Red));
+        assert_eq!(wrapped[0].spans[1].content.as_ref(), "c");
+        assert_eq!(wrapped[0].spans[1].style.fg, Some(Color::Blue));
+        assert_eq!(wrapped[1].spans[0].content.as_ref(), "d");
+        assert_eq!(wrapped[1].spans[0].style.fg, Some(Color::Blue));
+    }
+
+    #[test]
+    fn calculate_dim_opacity_respects_distance_and_floor() {
+        let paragraph = SelectableParagraph::new(vec![Line::from("line")])
+            .selected_line(Some(3))
+            .dim(2, 0.4);
+
+        assert!((paragraph.calculate_dim_opacity(3) - 1.0).abs() < f32::EPSILON);
+        assert!((paragraph.calculate_dim_opacity(4) - 0.7).abs() < f32::EPSILON);
+        assert!((paragraph.calculate_dim_opacity(8) - 0.4).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn render_fills_selected_line_padding_and_content_style() {
+        let buffer = render_paragraph(
+            SelectableParagraph::new(vec![Line::from("hi")])
+                .selected_line(Some(0))
+                .selected_style(Style::default().fg(Color::Yellow).bg(Color::Blue))
+                .background_style(Style::default().bg(Color::Red))
+                .padding(Padding::horizontal(1)),
+            6,
+            1,
+        );
+
+        assert_eq!(row_symbols(&buffer, 0), " hi   ");
+        assert_eq!(buffer[(0, 0)].bg, Color::Blue);
+        assert_eq!(buffer[(1, 0)].fg, Color::Yellow);
+        assert_eq!(buffer[(1, 0)].bg, Color::Blue);
+        assert_eq!(buffer[(5, 0)].bg, Color::Blue);
+    }
+
+    #[test]
+    fn render_uses_left_padding_only_on_wrapped_first_line() {
+        let buffer = render_paragraph(
+            SelectableParagraph::new(vec![Line::from("abcd")])
+                .background_style(Style::default().bg(Color::Red))
+                .padding(Padding::horizontal(1)),
+            4,
+            2,
+        );
+
+        assert_eq!(row_symbols(&buffer, 0), " abc");
+        assert_eq!(row_symbols(&buffer, 1), "d   ");
+        assert_eq!(buffer[(0, 0)].bg, Color::Red);
+        assert_eq!(buffer[(0, 1)].symbol(), "d");
+        assert_eq!(buffer[(3, 1)].bg, Color::Red);
+    }
+}
