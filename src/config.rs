@@ -45,10 +45,59 @@ fn default_ignore_patterns() -> Vec<String> {
     Vec::new()
 }
 
+fn home_dir() -> Option<PathBuf> {
+    #[cfg(test)]
+    if let Some(path) = test_home::current() {
+        return Some(path);
+    }
+    dirs::home_dir()
+}
+
 #[cfg(test)]
-pub(crate) fn test_home_env_lock() -> &'static std::sync::Mutex<()> {
-    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+pub(crate) mod test_home {
+    use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, MutexGuard, OnceLock, RwLock};
+
+    fn serializer() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn override_state() -> &'static RwLock<Option<PathBuf>> {
+        static STATE: OnceLock<RwLock<Option<PathBuf>>> = OnceLock::new();
+        STATE.get_or_init(|| RwLock::new(None))
+    }
+
+    pub(crate) fn current() -> Option<PathBuf> {
+        override_state().read().ok().and_then(|g| g.clone())
+    }
+
+    pub(crate) struct Guard {
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    impl Guard {
+        pub(crate) fn new(path: &Path) -> Self {
+            Self::with_override(Some(path.to_path_buf()))
+        }
+
+        #[cfg(test)]
+        pub(crate) fn no_override() -> Self {
+            Self::with_override(None)
+        }
+
+        fn with_override(path: Option<PathBuf>) -> Self {
+            let lock = serializer().lock().expect("serializer poisoned");
+            *override_state().write().expect("override poisoned") = path;
+            Self { _lock: lock }
+        }
+    }
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            *override_state().write().expect("override poisoned") = None;
+        }
+    }
 }
 
 impl Default for Config {
@@ -181,7 +230,7 @@ impl Config {
     }
 
     pub fn config_path() -> Result<PathBuf> {
-        let config_dir = dirs::home_dir()
+        let config_dir = home_dir()
             .context("Failed to determine home directory")?
             .join(".config")
             .join("gitlogue");
@@ -198,7 +247,7 @@ impl Config {
 
     #[allow(dead_code)]
     pub fn themes_dir() -> Result<PathBuf> {
-        let config_dir = dirs::home_dir()
+        let config_dir = home_dir()
             .context("Failed to determine home directory")?
             .join(".config")
             .join("gitlogue")
@@ -219,23 +268,15 @@ impl Config {
 mod tests {
     use super::*;
     use std::env;
-    use std::ffi::OsString;
-    use std::sync::MutexGuard;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    const HOME_VARS: [&str; 4] = ["HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH"];
-
     struct TempHome {
-        _lock: MutexGuard<'static, ()>,
+        _override: super::test_home::Guard,
         path: PathBuf,
-        original_vars: Vec<(&'static str, Option<OsString>)>,
     }
 
     impl TempHome {
         fn new() -> Result<Self> {
-            let lock = test_home_env_lock()
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
             let path = env::temp_dir().join(format!(
                 "gitlogue-config-tests-{}-{}",
                 std::process::id(),
@@ -244,35 +285,21 @@ mod tests {
 
             fs::create_dir_all(&path)?;
 
-            let original_vars = HOME_VARS
-                .iter()
-                .map(|name| (*name, env::var_os(name)))
-                .collect();
-
-            env::set_var("HOME", &path);
-            env::set_var("USERPROFILE", &path);
-            env::remove_var("HOMEDRIVE");
-            env::remove_var("HOMEPATH");
-
-            Ok(Self {
-                _lock: lock,
-                path,
-                original_vars,
-            })
+            let _override = super::test_home::Guard::new(&path);
+            Ok(Self { _override, path })
         }
     }
 
     impl Drop for TempHome {
         fn drop(&mut self) {
-            self.original_vars
-                .iter()
-                .for_each(|(name, value)| match value {
-                    Some(value) => env::set_var(name, value),
-                    None => env::remove_var(name),
-                });
-
             let _ = fs::remove_dir_all(&self.path);
         }
+    }
+
+    #[test]
+    fn home_dir_falls_back_to_dirs_home_dir_when_override_is_unset() {
+        let _guard = super::test_home::Guard::no_override();
+        assert_eq!(super::home_dir(), dirs::home_dir());
     }
 
     fn sample_config() -> Config {

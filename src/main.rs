@@ -631,13 +631,9 @@ mod tests {
     use git2::{Repository, Signature, Time};
     use ratatui::style::Color;
     use std::env;
-    use std::ffi::OsString;
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering as CounterOrdering};
-    use std::sync::MutexGuard;
     use std::time::{SystemTime, UNIX_EPOCH};
-
-    const HOME_VARS: [&str; 4] = ["HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH"];
 
     struct TestRepo {
         path: PathBuf,
@@ -645,9 +641,8 @@ mod tests {
     }
 
     struct TempHome {
-        _lock: MutexGuard<'static, ()>,
+        _override: config::test_home::Guard,
         path: PathBuf,
-        original_vars: Vec<(&'static str, Option<OsString>)>,
     }
 
     impl TestRepo {
@@ -743,9 +738,6 @@ mod tests {
 
     impl TempHome {
         fn new() -> Result<Self> {
-            let lock = config::test_home_env_lock()
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
             let path = env::temp_dir().join(format!(
                 "gitlogue-main-home-{}-{}",
                 std::process::id(),
@@ -754,21 +746,8 @@ mod tests {
 
             fs::create_dir_all(&path)?;
 
-            let original_vars = HOME_VARS
-                .iter()
-                .map(|name| (*name, env::var_os(name)))
-                .collect();
-
-            env::set_var("HOME", &path);
-            env::set_var("USERPROFILE", &path);
-            env::remove_var("HOMEDRIVE");
-            env::remove_var("HOMEPATH");
-
-            Ok(Self {
-                _lock: lock,
-                path,
-                original_vars,
-            })
+            let _override = config::test_home::Guard::new(&path);
+            Ok(Self { _override, path })
         }
     }
 
@@ -780,13 +759,6 @@ mod tests {
 
     impl Drop for TempHome {
         fn drop(&mut self) {
-            self.original_vars
-                .iter()
-                .for_each(|(name, value)| match value {
-                    Some(value) => env::set_var(name, value),
-                    None => env::remove_var(name),
-                });
-
             let _ = fs::remove_dir_all(&self.path);
         }
     }
