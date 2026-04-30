@@ -340,6 +340,36 @@ mod tests {
     }
 
     #[test]
+    fn load_accepts_legacy_loop_playback_key() -> Result<()> {
+        let _temp_home = TempHome::new()?;
+        let config_path = Config::config_path()?;
+
+        fs::write(&config_path, "loop_playback = true\n")?;
+
+        let config = Config::load()?;
+
+        assert!(config.loop_playback);
+        assert_eq!(config.theme, "tokyo-night");
+
+        Ok(())
+    }
+
+    #[test]
+    fn load_reports_parse_errors_with_config_path() -> Result<()> {
+        let _temp_home = TempHome::new()?;
+        let config_path = Config::config_path()?;
+
+        fs::write(&config_path, "theme = [\n")?;
+
+        let error = Config::load().unwrap_err().to_string();
+
+        assert!(error.contains("Failed to parse config file"));
+        assert!(error.contains(&config_path.display().to_string()));
+
+        Ok(())
+    }
+
+    #[test]
     fn save_creates_commented_config_and_round_trips_values() -> Result<()> {
         let _temp_home = TempHome::new()?;
         let config = sample_config();
@@ -356,6 +386,22 @@ mod tests {
 
         let loaded = Config::load()?;
         assert_config_eq(&loaded, &config);
+
+        Ok(())
+    }
+
+    #[test]
+    fn save_writes_empty_arrays_for_default_collections() -> Result<()> {
+        let _temp_home = TempHome::new()?;
+        let config = Config::default();
+        let config_path = Config::config_path()?;
+
+        config.save()?;
+
+        let contents = fs::read_to_string(&config_path)?;
+
+        assert!(contents.contains("ignore_patterns = []"));
+        assert!(contents.contains("speed_rules = []"));
 
         Ok(())
     }
@@ -389,6 +435,21 @@ mod tests {
 
         let loaded = Config::load()?;
         assert_config_eq(&loaded, &config);
+
+        Ok(())
+    }
+
+    #[test]
+    fn save_reports_parse_errors_for_existing_invalid_config() -> Result<()> {
+        let _temp_home = TempHome::new()?;
+        let config_path = Config::config_path()?;
+
+        fs::write(&config_path, "theme = [\n")?;
+
+        let error = sample_config().save().unwrap_err().to_string();
+
+        assert!(error.contains("Failed to parse config file"));
+        assert!(error.contains(&config_path.display().to_string()));
 
         Ok(())
     }
