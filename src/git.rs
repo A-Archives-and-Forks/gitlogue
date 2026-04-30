@@ -1255,6 +1255,270 @@ mod tests {
 
             Self { path, repo }
         }
+
+        fn commit_file(
+            &self,
+            relative_path: &str,
+            content: &str,
+            author_name: &str,
+            author_email: &str,
+            timestamp: i64,
+            message: &str,
+        ) -> String {
+            let file_path = self.path.join(relative_path);
+            file_path
+                .parent()
+                .map(std::fs::create_dir_all)
+                .transpose()
+                .unwrap();
+            std::fs::write(&file_path, content).unwrap();
+
+            let mut index = self.repo.index().unwrap();
+            index.add_path(std::path::Path::new(relative_path)).unwrap();
+            index.write().unwrap();
+
+            let tree_id = index.write_tree().unwrap();
+            let tree = self.repo.find_tree(tree_id).unwrap();
+            let signature =
+                git2::Signature::new(author_name, author_email, &git2::Time::new(timestamp, 0))
+                    .unwrap();
+            let parent = self
+                .repo
+                .head()
+                .ok()
+                .and_then(|head| head.peel_to_commit().ok());
+
+            let oid = match parent.as_ref() {
+                Some(parent_commit) => self.repo.commit(
+                    Some("HEAD"),
+                    &signature,
+                    &signature,
+                    message,
+                    &tree,
+                    &[parent_commit],
+                ),
+                None => self
+                    .repo
+                    .commit(Some("HEAD"), &signature, &signature, message, &tree, &[]),
+            }
+            .unwrap();
+
+            oid.to_string()
+        }
+    }
+
+    #[test]
+    fn test_commit_navigation_respects_order_and_reset() {
+        let test_repo = TestRepo::new();
+        let oldest = test_repo.commit_file(
+            "history.txt",
+            "one\n",
+            "Alice Example",
+            "alice@work.test",
+            1_700_000_000,
+            "first",
+        );
+        let middle = test_repo.commit_file(
+            "history.txt",
+            "two\n",
+            "Bob Example",
+            "bob@work.test",
+            1_700_000_060,
+            "second",
+        );
+        let newest = test_repo.commit_file(
+            "history.txt",
+            "three\n",
+            "Carol Example",
+            "carol@work.test",
+            1_700_000_120,
+            "third",
+        );
+        let repo = GitRepository::open(&test_repo.path).unwrap();
+
+        assert_eq!(repo.next_desc_commit().unwrap().hash, newest);
+        assert_eq!(repo.next_desc_commit().unwrap().hash, middle);
+
+        repo.reset_index();
+
+        assert_eq!(repo.next_asc_commit().unwrap().hash, oldest);
+        assert_eq!(repo.next_asc_commit().unwrap().hash, middle);
+        assert_eq!(repo.next_asc_commit().unwrap().hash, newest);
+        assert!(repo.next_asc_commit().is_err());
+    }
+
+    #[test]
+    fn test_commit_filters_match_author_and_inclusive_dates() {
+        let test_repo = TestRepo::new();
+        let alice = test_repo.commit_file(
+            "history.txt",
+            "one\n",
+            "Alice Example",
+            "alice@work.test",
+            1_700_001_000,
+            "alice",
+        );
+        let bob = test_repo.commit_file(
+            "history.txt",
+            "two\n",
+            "Bob Example",
+            "bob@example.com",
+            1_700_001_060,
+            "bob",
+        );
+        test_repo.commit_file(
+            "history.txt",
+            "three\n",
+            "Carol Example",
+            "carol@example.com",
+            1_700_001_120,
+            "carol",
+        );
+
+        let mut author_filtered = GitRepository::open(&test_repo.path).unwrap();
+        author_filtered.set_author_filter(Some("WORK.TEST".to_string()));
+        assert_eq!(author_filtered.random_commit().unwrap().hash, alice);
+
+        let mut date_filtered = GitRepository::open(&test_repo.path).unwrap();
+        let bob_date = DateTime::from_timestamp(1_700_001_060, 0).unwrap();
+        date_filtered.set_after_filter(Some(bob_date));
+        date_filtered.set_before_filter(Some(bob_date));
+        assert_eq!(date_filtered.next_desc_commit().unwrap().hash, bob);
+        assert!(date_filtered.next_desc_commit().is_err());
+
+        let mut missing_author = GitRepository::open(&test_repo.path).unwrap();
+        missing_author.set_author_filter(Some("nobody".to_string()));
+        assert!(missing_author.next_desc_commit().is_err());
+    }
+
+    #[test]
+    fn test_commit_range_lookup_and_validation() {
+        let test_repo = TestRepo::new();
+        test_repo.commit_file(
+            "src/lib.rs",
+            "pub fn oldest() {}\n",
+            "Alice Example",
+            "alice@example.com",
+            1_700_002_000,
+            "oldest",
+        );
+        let middle = test_repo.commit_file(
+            "src/lib.rs",
+            "pub fn middle() {}\n",
+            "Bob Example",
+            "bob@example.com",
+            1_700_002_060,
+            "middle",
+        );
+        let newest = test_repo.commit_file(
+            "src/lib.rs",
+            "pub fn newest() {}\n",
+            "Carol Example",
+            "carol@example.com",
+            1_700_002_120,
+            "newest",
+        );
+
+        let repo = GitRepository::open(&test_repo.path).unwrap();
+        let metadata = repo.get_commit(&middle).unwrap();
+        assert_eq!(metadata.message, "middle");
+        assert_eq!(metadata.changes[0].path, "src/lib.rs");
+
+        repo.set_commit_range("HEAD~2..HEAD").unwrap();
+        assert_eq!(repo.next_range_commit_asc().unwrap().hash, middle);
+        assert_eq!(repo.next_range_commit_asc().unwrap().hash, newest);
+        assert!(repo.next_range_commit_asc().is_err());
+
+        let desc_repo = GitRepository::open(&test_repo.path).unwrap();
+        desc_repo.set_commit_range("HEAD~2..HEAD").unwrap();
+        assert_eq!(desc_repo.next_range_commit_desc().unwrap().hash, newest);
+        assert_eq!(desc_repo.next_range_commit_desc().unwrap().hash, middle);
+
+        let random_repo = GitRepository::open(&test_repo.path).unwrap();
+        random_repo.set_commit_range("HEAD~2..HEAD").unwrap();
+        let random_hash = random_repo.random_range_commit().unwrap().hash;
+        assert!([middle.clone(), newest.clone()].contains(&random_hash));
+
+        let invalid_repo = GitRepository::open(&test_repo.path).unwrap();
+        assert!(invalid_repo.set_commit_range("HEAD...HEAD").is_err());
+        assert!(invalid_repo.set_commit_range("HEAD").is_err());
+    }
+
+    #[test]
+    fn test_parse_date_and_sorted_file_indices_cover_edge_cases() {
+        let parsed = parse_date("2024-01-01").unwrap();
+        assert_eq!(
+            parsed.with_timezone(&Local).format("%Y-%m-%d").to_string(),
+            "2024-01-01"
+        );
+        assert!(parse_date("definitely-not-a-date").is_err());
+
+        let metadata = CommitMetadata {
+            hash: "hash".to_string(),
+            author: "author".to_string(),
+            date: Utc::now(),
+            message: "message".to_string(),
+            changes: vec![
+                FileChange {
+                    path: "src/main.rs".to_string(),
+                    old_path: None,
+                    status: FileStatus::Modified,
+                    is_binary: false,
+                    is_excluded: false,
+                    exclusion_reason: None,
+                    old_content: None,
+                    new_content: None,
+                    hunks: vec![],
+                    diff: String::new(),
+                },
+                FileChange {
+                    path: "Cargo.toml".to_string(),
+                    old_path: None,
+                    status: FileStatus::Added,
+                    is_binary: false,
+                    is_excluded: false,
+                    exclusion_reason: None,
+                    old_content: None,
+                    new_content: None,
+                    hunks: vec![],
+                    diff: String::new(),
+                },
+                FileChange {
+                    path: "src/lib.rs".to_string(),
+                    old_path: None,
+                    status: FileStatus::Modified,
+                    is_binary: false,
+                    is_excluded: false,
+                    exclusion_reason: None,
+                    old_content: None,
+                    new_content: None,
+                    hunks: vec![],
+                    diff: String::new(),
+                },
+                FileChange {
+                    path: "docs/guide.md".to_string(),
+                    old_path: None,
+                    status: FileStatus::Added,
+                    is_binary: false,
+                    is_excluded: false,
+                    exclusion_reason: None,
+                    old_content: None,
+                    new_content: None,
+                    hunks: vec![],
+                    diff: String::new(),
+                },
+            ],
+        };
+
+        let sorted_paths: Vec<&str> = metadata
+            .sorted_file_indices()
+            .iter()
+            .map(|&index| metadata.changes[index].path.as_str())
+            .collect();
+        assert_eq!(
+            sorted_paths,
+            vec!["Cargo.toml", "docs/guide.md", "src/lib.rs", "src/main.rs"]
+        );
     }
 
     #[test]
