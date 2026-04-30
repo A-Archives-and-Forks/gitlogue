@@ -382,15 +382,29 @@ mod tests {
     fn capture_names_map_to_tokens_and_theme_colors() {
         let theme = Theme::default();
         let cases = [
+            ("annotation", TokenType::Keyword, theme.syntax_keyword),
             ("comment", TokenType::Comment, theme.syntax_comment),
             ("boolean", TokenType::Constant, theme.syntax_constant),
+            ("character.escape", TokenType::String, theme.syntax_string),
+            ("conditional", TokenType::Keyword, theme.syntax_keyword),
+            (
+                "delimiter",
+                TokenType::Punctuation,
+                theme.syntax_punctuation,
+            ),
+            ("escape", TokenType::Operator, theme.syntax_operator),
+            ("field", TokenType::Property, theme.syntax_property),
+            ("float", TokenType::Number, theme.syntax_number),
             (
                 "function.method",
                 TokenType::Function,
                 theme.syntax_function,
             ),
+            ("identifier", TokenType::Variable, theme.syntax_variable),
             ("keyword", TokenType::Keyword, theme.syntax_keyword),
             ("label", TokenType::Label, theme.syntax_label),
+            ("method", TokenType::Function, theme.syntax_function),
+            ("namespace", TokenType::Type, theme.syntax_type),
             ("number", TokenType::Number, theme.syntax_number),
             ("operator", TokenType::Operator, theme.syntax_operator),
             ("parameter", TokenType::Parameter, theme.syntax_parameter),
@@ -400,8 +414,12 @@ mod tests {
                 TokenType::Punctuation,
                 theme.syntax_punctuation,
             ),
+            ("regexp", TokenType::String, theme.syntax_string),
+            ("special", TokenType::Operator, theme.syntax_operator),
             ("string.special", TokenType::String, theme.syntax_string),
             ("struct", TokenType::Type, theme.syntax_type),
+            ("tag", TokenType::Type, theme.syntax_type),
+            ("type.definition", TokenType::Type, theme.syntax_type),
             ("variable", TokenType::Variable, theme.syntax_variable),
         ];
 
@@ -506,6 +524,27 @@ mod tests {
     }
 
     #[test]
+    fn resolve_injection_language_rejects_blank_capture_text() {
+        let html = get_language_by_name("html").unwrap();
+        let query = Query::new(
+            &html.language,
+            "(script_element (raw_text) @injection.language)",
+        )
+        .unwrap();
+        let source = "<script>   </script>";
+        let tree = parse_tree(&html, source);
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(&query, tree.root_node(), source.as_bytes());
+
+        assert_eq!(
+            matches
+                .next()
+                .and_then(|matched| resolve_injection_language(&query, matched, source)),
+            None
+        );
+    }
+
+    #[test]
     fn gather_injections_ignores_queries_without_content_or_known_language() {
         let html = get_language_by_name("html").unwrap();
         let source = "<script>const answer = 42;</script>";
@@ -528,6 +567,11 @@ mod tests {
         )
         .unwrap();
         assert!(gather_injections(&unknown_language_query, &tree, source, 0).is_empty());
+
+        let empty_script = "<script></script>";
+        let empty_tree = parse_tree(&html, empty_script);
+        let html_query = Query::new(&html.language, html.injection_query.unwrap()).unwrap();
+        assert!(gather_injections(&html_query, &empty_tree, empty_script, 0).is_empty());
     }
 
     #[test]
@@ -554,6 +598,21 @@ mod tests {
         assert!(offset_spans
             .iter()
             .all(|span| span.start >= 7 && span.end > 7));
+    }
+
+    #[test]
+    fn highlight_slice_runs_nested_injection_queries_when_supported() {
+        let html = get_language_by_name("html").unwrap();
+        let source = "<script>const nested = 1;</script>";
+        let base_offset = 11;
+        let expected_start = base_offset + source.find("const nested = 1;").unwrap();
+        let expected_end = expected_start + "const nested = 1;".len();
+        let spans = highlight_slice(&html, source, base_offset, 0);
+
+        assert!(!spans.is_empty());
+        assert!(spans
+            .iter()
+            .any(|span| span.start >= expected_start && span.end <= expected_end));
     }
 
     #[test]
