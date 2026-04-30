@@ -80,7 +80,31 @@ impl<'a> UI<'a> {
     ) -> Self {
         let should_exit = Arc::new(AtomicBool::new(false));
         Self::setup_signal_handler(should_exit.clone());
+        Self::build(
+            speed_ms,
+            repo,
+            theme,
+            order,
+            loop_playback,
+            commit_spec,
+            is_range_mode,
+            speed_rules,
+            should_exit,
+        )
+    }
 
+    #[allow(clippy::too_many_arguments)]
+    fn build(
+        speed_ms: u64,
+        repo: Option<&'a GitRepository>,
+        theme: Theme,
+        order: PlaybackOrder,
+        loop_playback: bool,
+        commit_spec: Option<String>,
+        is_range_mode: bool,
+        speed_rules: Vec<SpeedRule>,
+        should_exit: Arc<AtomicBool>,
+    ) -> Self {
         let mut engine = AnimationEngine::new(speed_ms);
         engine.set_speed_rules(speed_rules);
 
@@ -399,6 +423,29 @@ impl<'a> UI<'a> {
         matches!(key.code, KeyCode::Char('q')) || Self::is_ctrl_c(key)
     }
 
+    fn advance_state_after_tick(&mut self, now: Instant) -> bool {
+        match self.state {
+            UIState::Playing if self.engine.is_finished() => {
+                self.state = if self.repo.is_some() {
+                    UIState::WaitingForNext {
+                        resume_at: now + Duration::from_millis(self.speed_ms * 100),
+                    }
+                } else {
+                    UIState::Finished
+                };
+            }
+            UIState::WaitingForNext { resume_at }
+                if now >= resume_at && self.playback_state != PlaybackState::Paused =>
+            {
+                self.advance_to_next_commit();
+            }
+            UIState::Finished => return false,
+            _ => {}
+        }
+
+        true
+    }
+
     /// Runs the main UI event loop.
     pub fn run(&mut self) -> Result<()> {
         enable_raw_mode()?;
@@ -455,35 +502,8 @@ impl<'a> UI<'a> {
                 }
             }
 
-            // State machine
-            match self.state {
-                UIState::Playing => {
-                    if self.engine.is_finished() {
-                        if self.repo.is_some() {
-                            self.state = UIState::WaitingForNext {
-                                resume_at: Instant::now()
-                                    + Duration::from_millis(self.speed_ms * 100),
-                            };
-                        } else {
-                            self.state = UIState::Finished;
-                        }
-                    }
-                }
-                UIState::WaitingForNext { resume_at } => {
-                    if Instant::now() >= resume_at {
-                        if matches!(self.playback_state, PlaybackState::Paused) {
-                            continue;
-                        }
-
-                        self.advance_to_next_commit();
-                    }
-                }
-                UIState::Menu | UIState::KeyBindings | UIState::About => {
-                    // Paused while in menu/dialog
-                }
-                UIState::Finished => {
-                    break;
-                }
+            if !self.advance_state_after_tick(Instant::now()) {
+                break;
             }
         }
 
@@ -859,28 +879,17 @@ mod tests {
     }
 
     fn test_ui_with_repo<'a>(repo: Option<&'a GitRepository>) -> UI<'a> {
-        UI {
-            state: UIState::Playing,
-            speed_ms: 16,
-            file_tree: FileTreePane::new(),
-            editor: EditorPane,
-            terminal: TerminalPane,
-            status_bar: StatusBarPane,
-            engine: AnimationEngine::new(16),
+        UI::build(
+            16,
             repo,
-            should_exit: Arc::new(AtomicBool::new(false)),
-            theme: Theme::default(),
-            order: PlaybackOrder::Asc,
-            loop_playback: false,
-            commit_spec: None,
-            is_range_mode: false,
-            diff_mode: None,
-            playback_state: PlaybackState::Playing,
-            history: Vec::new(),
-            history_index: None,
-            menu_index: 0,
-            prev_state: None,
-        }
+            Theme::default(),
+            PlaybackOrder::Asc,
+            false,
+            None,
+            false,
+            Vec::new(),
+            Arc::new(AtomicBool::new(false)),
+        )
     }
 
     fn test_ui() -> UI<'static> {
@@ -1272,5 +1281,68 @@ mod tests {
 
         assert!(text.contains("hash: 4444444"));
         assert!(text.contains("render commit"));
+    }
+
+    #[test]
+    fn advance_state_after_tick_transitions_finished_playback_to_waiting_or_finished() -> Result<()>
+    {
+        let now = Instant::now();
+
+        let standalone_ui = {
+            let mut ui = test_ui();
+            ui.engine.state = crate::animation::AnimationState::Finished;
+            ui
+        };
+        let mut standalone_ui = standalone_ui;
+        assert!(standalone_ui.advance_state_after_tick(now));
+        assert_eq!(standalone_ui.state, UIState::Finished);
+
+        let test_repo = TestRepo::new();
+        test_repo.commit_file("src/lib.rs", "fn keep() {}\n", "keep", 1);
+        let repo = GitRepository::open(&test_repo.path)?;
+        let mut repo_ui = test_ui_with_repo(Some(&repo));
+        repo_ui.engine.state = crate::animation::AnimationState::Finished;
+
+        assert!(repo_ui.advance_state_after_tick(now));
+        assert!(matches!(
+            repo_ui.state,
+            UIState::WaitingForNext { resume_at }
+                if resume_at == now + Duration::from_millis(repo_ui.speed_ms * 100)
+        ));
+
+        Ok(())
+    }
+
+    #[test]
+    fn advance_state_after_tick_waits_while_paused_and_advances_when_resumed() -> Result<()> {
+        let test_repo = TestRepo::new();
+        let first = test_repo.commit_file("src/lib.rs", "fn first() {}\n", "first", 1);
+        let repo = GitRepository::open(&test_repo.path)?;
+        let resume_at = Instant::now() - Duration::from_millis(1);
+        let mut ui = test_ui_with_repo(Some(&repo));
+        ui.state = UIState::WaitingForNext { resume_at };
+        ui.playback_state = PlaybackState::Paused;
+
+        assert!(ui.advance_state_after_tick(Instant::now()));
+        assert!(matches!(ui.state, UIState::WaitingForNext { .. }));
+        assert!(ui.history.is_empty());
+
+        ui.playback_state = PlaybackState::Playing;
+        assert!(ui.advance_state_after_tick(Instant::now()));
+        assert_eq!(ui.state, UIState::Playing);
+        assert_eq!(
+            ui.history.last().map(|item| item.hash.as_str()),
+            Some(first.as_str())
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn advance_state_after_tick_stops_loop_once_ui_is_finished() {
+        let mut ui = test_ui();
+        ui.state = UIState::Finished;
+
+        assert!(!ui.advance_state_after_tick(Instant::now()));
     }
 }
