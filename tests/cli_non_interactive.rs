@@ -209,6 +209,21 @@ fn theme_subcommands_list_and_set_default_theme() -> Result<()> {
 }
 
 #[test]
+fn theme_set_rejects_unknown_theme_without_writing_config() -> Result<()> {
+    let home = TempHome::new()?;
+
+    let output = run_command(command_with_home(&home).args(["theme", "set", "missing-theme"]))?;
+
+    assert!(!output.status.success());
+    assert_eq!(stdout(&output), "");
+    assert!(stderr(&output).contains("Unknown theme: missing-theme"));
+    assert!(stderr(&output).contains("Available themes:"));
+    assert!(!home.config_path().exists());
+
+    Ok(())
+}
+
+#[test]
 fn diff_subcommand_reports_no_changes_for_clean_repo() -> Result<()> {
     let repo = TestRepo::new()?;
 
@@ -245,6 +260,30 @@ fn diff_subcommand_with_staged_changes_fails_only_after_ui_startup_without_tty()
 }
 
 #[test]
+fn diff_subcommand_with_invalid_theme_fails_before_ui_startup() -> Result<()> {
+    let repo = TestRepo::new()?;
+    repo.commit_file("src/lib.rs", "fn clean() {}\n", "initial", 1)?;
+    repo.write_file("src/lib.rs", "fn staged() {}\n")?;
+    repo.stage_file("src/lib.rs")?;
+
+    let output = run_command(gitlogue_command().args([
+        "--path",
+        repo_path(&repo).to_str().unwrap(),
+        "diff",
+        "--theme",
+        "missing-theme",
+    ]))?;
+
+    assert!(!output.status.success());
+    assert_eq!(stdout(&output), "");
+    assert!(stderr(&output).contains("Unknown theme: missing-theme"));
+    assert!(stderr(&output).contains("Available themes:"));
+    assert!(!stderr(&output).contains("No such device or address"));
+
+    Ok(())
+}
+
+#[test]
 fn default_playback_fails_only_after_ui_startup_without_tty() -> Result<()> {
     let repo = TestRepo::new()?;
     repo.commit_file("src/main.rs", "fn main() {}\n", "initial", 1)?;
@@ -255,6 +294,27 @@ fn default_playback_fails_only_after_ui_startup_without_tty() -> Result<()> {
     assert!(!output.status.success());
     assert_eq!(stdout(&output), "");
     assert!(stderr(&output).contains("No such device or address"));
+
+    Ok(())
+}
+
+#[test]
+fn default_playback_with_invalid_theme_fails_before_ui_startup() -> Result<()> {
+    let repo = TestRepo::new()?;
+    repo.commit_file("src/main.rs", "fn main() {}\n", "initial", 1)?;
+
+    let output = run_command(gitlogue_command().args([
+        "--path",
+        repo_path(&repo).to_str().unwrap(),
+        "--theme",
+        "missing-theme",
+    ]))?;
+
+    assert!(!output.status.success());
+    assert_eq!(stdout(&output), "");
+    assert!(stderr(&output).contains("Unknown theme: missing-theme"));
+    assert!(stderr(&output).contains("Available themes:"));
+    assert!(!stderr(&output).contains("No such device or address"));
 
     Ok(())
 }
