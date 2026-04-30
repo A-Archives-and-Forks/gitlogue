@@ -537,6 +537,14 @@ mod tests {
     }
 
     #[test]
+    fn render_returns_early_for_zero_sized_areas() {
+        let buffer = render_paragraph(SelectableParagraph::new(vec![Line::from("hidden")]), 0, 1);
+
+        assert_eq!(buffer.area.width, 0);
+        assert_eq!(row_symbols(&buffer, 0), "");
+    }
+
+    #[test]
     fn render_skips_unwrapped_content_when_horizontal_padding_exceeds_width() {
         let buffer = render_paragraph(
             SelectableParagraph::new(vec![Line::from("x")]).padding(Padding::horizontal(1)),
