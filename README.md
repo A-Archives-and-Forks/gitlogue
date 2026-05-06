@@ -6,6 +6,7 @@
   <a href="https://crates.io/crates/gitlogue"><img src="https://img.shields.io/crates/v/gitlogue.svg?style=flat-square&color=E06B4B" alt="crates.io"></a>
   <a href="https://github.com/unhappychoice/gitlogue/releases"><img src="https://img.shields.io/github/v/release/unhappychoice/gitlogue?style=flat-square&color=E0C14B&label=release" alt="release"></a>
   <a href="https://github.com/unhappychoice/gitlogue/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/unhappychoice/gitlogue/ci.yml?branch=main&style=flat-square&label=CI" alt="CI"></a>
+  <a href="https://codecov.io/gh/unhappychoice/gitlogue"><img src="https://img.shields.io/codecov/c/github/unhappychoice/gitlogue?style=flat-square" alt="codecov"></a>
   <a href="https://github.com/unhappychoice/gitlogue/blob/main/LICENSE"><img src="https://img.shields.io/crates/l/gitlogue.svg?style=flat-square" alt="license"></a>
   <a href="https://terminaltrove.com/gitlogue/"><img src="https://img.shields.io/badge/Terminal_Trove-Tool_of_The_Week-2ea043?style=flat-square" alt="Terminal Trove Tool of The Week"></a>
 </p>
