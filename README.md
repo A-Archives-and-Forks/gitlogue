@@ -225,3 +225,19 @@ ISC License. See [LICENSE](LICENSE) for details.
 ## Author
 
 [@unhappychoice](https://unhappychoice.com)
+
+## Support
+
+If you find this project useful, please consider:
+
+- ⭐️ [Star on GitHub](https://github.com/unhappychoice/gitlogue)
+- 🐦 [Share on X](https://x.com/intent/post?text=Your%20Git%20history%20as%20cinema.%20gitlogue%20replays%20commits%20as%20a%20terminal%20animation%20%F0%9F%8E%9E%EF%B8%8F&url=https%3A//github.com/unhappychoice/gitlogue&hashtags=gitlogue,CLI,Rust,git)
+- 🦋 [Share on Bluesky](https://bsky.app/intent/compose?text=Your%20Git%20history%20as%20cinema.%20gitlogue%20replays%20commits%20as%20a%20terminal%20animation%20%F0%9F%8E%9E%EF%B8%8F%20%23gitlogue%20%23CLI%20%23Rust%20%23git%20https%3A//github.com/unhappychoice/gitlogue)
+- 🧵 [Share on Threads](https://www.threads.net/intent/post?text=Your%20Git%20history%20as%20cinema.%20gitlogue%20replays%20commits%20as%20a%20terminal%20animation%20%F0%9F%8E%9E%EF%B8%8F%20%23gitlogue%20%23CLI%20%23Rust%20%23git%20https%3A//github.com/unhappychoice/gitlogue)
+- 💼 [Share on LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A//github.com/unhappychoice/gitlogue)
+- 📘 [Share on Facebook](https://www.facebook.com/sharer/sharer.php?u=https%3A//github.com/unhappychoice/gitlogue)
+- 🟧 [Submit to Hacker News](https://news.ycombinator.com/submitlink?u=https%3A//github.com/unhappychoice/gitlogue&t=Your%20Git%20history%20as%20cinema.%20gitlogue%20replays%20commits%20as%20a%20terminal%20animation%20%F0%9F%8E%9E%EF%B8%8F)
+- 💬 Drop it into your Discord server or developer chat
+- ✍️ Write about it on your blog or in a newsletter
+
+Every bit of support helps. Thanks!
