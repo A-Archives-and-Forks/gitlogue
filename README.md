@@ -237,5 +237,7 @@ If you find this project useful, please consider:
 - 💼 [Share on LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A//github.com/unhappychoice/gitlogue)
 - 📘 [Share on Facebook](https://www.facebook.com/sharer/sharer.php?u=https%3A//github.com/unhappychoice/gitlogue)
 - 🟧 [Submit to Hacker News](https://news.ycombinator.com/submitlink?u=https%3A//github.com/unhappychoice/gitlogue&t=Your%20Git%20history%20as%20cinema.%20gitlogue%20replays%20commits%20as%20a%20terminal%20animation%20%F0%9F%8E%9E%EF%B8%8F)
+- 💬 Drop it into your Discord server or developer chat
+- ✍️ Write about it on your blog or in a newsletter
 
 Every bit of support helps. Thanks!
