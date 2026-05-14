@@ -9,6 +9,7 @@
   <a href="https://codecov.io/gh/unhappychoice/gitlogue"><img src="https://img.shields.io/codecov/c/github/unhappychoice/gitlogue?style=flat-square" alt="codecov"></a>
   <a href="https://github.com/unhappychoice/gitlogue/blob/main/LICENSE"><img src="https://img.shields.io/crates/l/gitlogue.svg?style=flat-square" alt="license"></a>
   <a href="https://terminaltrove.com/gitlogue/"><img src="https://img.shields.io/badge/Terminal_Trove-Tool_of_The_Week-2ea043?style=flat-square" alt="Terminal Trove Tool of The Week"></a>
+  <a href="https://hellogithub.com/repository/unhappychoice/gitlogue" target="_blank"><img src="https://abroad.hellogithub.com/v1/widgets/recommend.svg?rid=611a8aecd29d4ac295c64899448f395c&claim_uid=cSxaw6P2C5pfIlE&theme=small" alt="Featured｜HelloGitHub"></a>
 </p>
 
 <p align="center">
